@@ -1,6 +1,6 @@
 
-                .import __RAM_START__
-                .import __RAM_LAST__
+                .import __CODE_LOAD__
+                .import __RODATA_LOAD__, __RODATA_SIZE__
 
 POKMSK          = $10
 LMARGN          = $52
@@ -23,8 +23,8 @@ CIOV            = $e456
                 .segment "HEADER"
 
                 .word $ffff
-                .word __RAM_START__
-                .word __RAM_LAST__ - 1
+                .word __CODE_LOAD__
+                .word __RODATA_LOAD__ + __RODATA_SIZE__ - 1
 
                 .segment "TRAILER"
 
@@ -34,11 +34,12 @@ CIOV            = $e456
 
                 .segment "RODATA"
 
-FILENAME:       .byte "H:OPCDATA.BIN",  $9b
+FILENAME:       .byte "H:OPCDATA2.BIN",  $9b
 START_GUI_MSG:  .byte $7d, "Hello, world!", $9b, "Second line", $9b
+
 START_GUI_MSG_SIZE = * - START_GUI_MSG
 
-WRITE_FILE_FLAG: .byte 0
+WRITE_FILE_FLAG: .byte WFF
 
                 .segment "BSS"
 
@@ -47,8 +48,6 @@ REC_START       = *
 WALK_P:         .res 1
 WALK_OP1:       .res 1
 WALK_OP2:       .res 1
-
-                .if 0
 
 RESULT_CLC_P:   .res 1
 RESULT_SEC_P:   .res 1
@@ -81,11 +80,11 @@ RESULT_TAY_P:   .res 1
 RESULT_TYA_A:   .res 1
 RESULT_TYA_P:   .res 1
 
-;RESULT_TXS_S:   .res 1
-;RESULT_TXS_P:   .res 1
+RESULT_TXS_S:   .res 1
+RESULT_TXS_P:   .res 1
 
-;RESULT_TSX_X:   .res 1
-;RESULT_TSX_P:   .res 1
+RESULT_TSX_X:   .res 1
+RESULT_TSX_P:   .res 1
 
 RESULT_INX_X:   .res 1
 RESULT_INX_P:   .res 1
@@ -99,10 +98,29 @@ RESULT_DEX_P:   .res 1
 RESULT_DEY_Y:   .res 1
 RESULT_DEY_P:   .res 1
 
-RESULT_TSX_X:   .res 1
-RESULT_TSX_P:   .res 1
+RESULT_ASL_ACCU_A: .res 1
+RESULT_ASL_ACCU_P: .res 1
+RESULT_ROL_ACCU_A: .res 1
+RESULT_ROL_ACCU_P: .res 1
+RESULT_LSR_ACCU_A: .res 1
+RESULT_LSR_ACCU_P: .res 1
+RESULT_ROR_ACCU_A: .res 1
+RESULT_ROR_ACCU_P: .res 1
 
-                .endif
+RESULT_ASL_MEM_M: .res 1
+RESULT_ASL_MEM_P: .res 1
+RESULT_ROL_MEM_M: .res 1
+RESULT_ROL_MEM_P: .res 1
+RESULT_LSR_MEM_M: .res 1
+RESULT_LSR_MEM_P: .res 1
+RESULT_ROR_MEM_M: .res 1
+RESULT_ROR_MEM_P: .res 1
+
+RESULT_INC_MEM_M: .res 1
+RESULT_INC_MEM_P: .res 1
+
+RESULT_DEC_MEM_M: .res 1
+RESULT_DEC_MEM_P: .res 1
 
 RESULT_ORA_A:   .res 1
 RESULT_ORA_P:   .res 1
@@ -130,6 +148,24 @@ RESULT_SBC_P:   .res 1
 
 RESULT_BIT_A:   .res 1
 RESULT_BIT_P:   .res 1
+
+RESULT_STX_MEM: .res 1
+RESULT_STX_P:   .res 1
+
+RESULT_LDX_X:   .res 1
+RESULT_LDX_P:   .res 1
+
+RESULT_CPX_X:   .res 1
+RESULT_CPX_P:   .res 1
+
+RESULT_STY_MEM: .res 1
+RESULT_STY_P:   .res 1
+
+RESULT_LDY_Y:   .res 1
+RESULT_LDY_P:   .res 1
+
+RESULT_CPY_Y:   .res 1
+RESULT_CPY_P:   .res 1
 
 REC_SIZE        = * - REC_START
 
@@ -389,8 +425,6 @@ update_record:  php
                 sta NMIEN
                 sta IRQEN
 
-                .if 0
-
                 ; Test CLC (save resulting P register)
 
                 lda WALK_P
@@ -599,22 +633,19 @@ update_record:  php
                 pla
                 sta RESULT_TYA_P
 
-                .endif
-
                 ; Test TXS (X = OP1; save resulting S and P registers).
                 ; This one is complicated because the "php" following the 'txs' instruction will end up on the stack at $100,x.
                 ; We need to save the old stack value and the value present there and restore it later.
 
-                tsx                ; Save stack pointer in Y
+                tsx                ; Save stack pointer S in Y register.
                 txa
                 tay
 
                 lda WALK_P
                 pha
-                sta SAVE_S
                 ldx WALK_OP1
-                lda $100,x         ; Save value that will be overwritten by the "php" that follows the "txs" in Y register.
-                sta RESULT_TXS_S   ; Abuse as temp storage for value to be overwritten.
+                lda $100,x         ; Save value that will be overwritten by the "php" that follows the "txs".
+                sta RESULT_TXS_S   ; Use as temp storage for value to be overwritten.
                 plp                ; Prepare P register.
                 txs                ; Instruction under test.
                 php                ; This overwrites $100,x and changes S! But it's the only way to save the P register untouched.
@@ -623,7 +654,7 @@ update_record:  php
                 tsx                ; Get resulting stack pointer in X (will save to 'RESULT_TXS_S', below).
                 lda RESULT_TXS_S   ; The stack value to be restored.
                 pha                ; Restore the stack value that was brutally overwritten by the 'php'.
-                stx RESULT_TXS_S
+                stx RESULT_TXS_S   ; Store S value post-txs.
 
                 tya                ; Restore stack pointer.
                 tax
@@ -632,21 +663,34 @@ update_record:  php
                 ; Test TSX (S = OP1; save resulting X and P registers).
                 ; This one is complicated because the "php" following the 'tsx' instruction will end up on the stack at $100,OP1
 
-                ;lda WALK_P
-                ;pha
-                ;ldy WALK_OP1
-                ;plp
-                ;tya
-                ;php
-                ;sta RESULT_TSX_X
-                ;pla
-                ;sta RESULT_TSX_P
+                tsx                ; Save stack pointer in Y register.
+                txa
+                tay
+
+                ldx WALK_OP1
+                lda $100,x         ; Save value that will be overwritten by the "php" that follows the "tsx".
+                sta RESULT_TSX_X   ; Use as temp storage for value to be overwritten.
+                txs                ; Set S
+                lda WALK_P
+                pha                ; This overwrites the stack value
+                plp                ; Prepare P
+                tsx                ; Instruction under investigation.
+                php                ; This destroys the stack value at $100,OP1 again.
+                pla                ; Retrieve P after TSX.
+                sta RESULT_TSX_P   ; Store P value.
+                lda RESULT_TSX_X   ; Restore original stack value.
+                pha
+                stx RESULT_TSX_X   ; Store X value
+
+                tya                ; Restore stack pointer from Y register.
+                tax
+                txs
 
                 ; Test INX (X = OP1; save resulting X and P registers)
 
                 lda WALK_P
                 pha
-                ldx OP1
+                ldx WALK_OP1
                 plp
                 inx
                 php
@@ -658,7 +702,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                ldy OP1
+                ldy WALK_OP1
                 plp
                 iny
                 php
@@ -670,7 +714,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                ldx OP1
+                ldx WALK_OP1
                 plp
                 dex
                 php
@@ -682,7 +726,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                ldy OP1
+                ldy WALK_OP1
                 plp
                 dey
                 php
@@ -694,7 +738,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
+                lda WALK_OP1
                 plp
                 asl a
                 php
@@ -706,7 +750,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
+                lda WALK_OP1
                 plp
                 rol a
                 php
@@ -718,7 +762,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
+                lda WALK_OP1
                 plp
                 lsr a
                 php
@@ -730,7 +774,7 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
+                lda WALK_OP1
                 plp
                 ror a
                 php
@@ -742,10 +786,10 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
-                sta RESULT_ASL_MEM_A
+                lda WALK_OP1
+                sta RESULT_ASL_MEM_M
                 plp
-                asl RESULT_ASL_MEM_A
+                asl RESULT_ASL_MEM_M
                 php
                 pla
                 sta RESULT_ASL_MEM_P
@@ -754,10 +798,10 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
-                sta RESULT_ROL_MEM_A
+                lda WALK_OP1
+                sta RESULT_ROL_MEM_M
                 plp
-                rol RESULT_ROL_MEM_A
+                rol RESULT_ROL_MEM_M
                 php
                 pla
                 sta RESULT_ROL_MEM_P
@@ -766,10 +810,10 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
-                sta RESULT_LSR_MEM_A
+                lda WALK_OP1
+                sta RESULT_LSR_MEM_M
                 plp
-                lsr RESULT_LSR_MEM_A
+                lsr RESULT_LSR_MEM_M
                 php
                 pla
                 sta RESULT_LSR_MEM_P
@@ -778,13 +822,37 @@ update_record:  php
 
                 lda WALK_P
                 pha
-                lda OP1
-                sta RESULT_ROR_MEM_A
+                lda WALK_OP1
+                sta RESULT_ROR_MEM_M
                 plp
-                ror RESULT_ROR_MEM_A
+                ror RESULT_ROR_MEM_M
                 php
                 pla
                 sta RESULT_ROR_MEM_P
+
+                ; Test DEC memory
+
+                lda WALK_P
+                pha
+                lda WALK_OP1
+                sta RESULT_DEC_MEM_M
+                plp
+                dec RESULT_DEC_MEM_M
+                php
+                pla
+                sta RESULT_BIT_P
+
+                ; Test INC memory
+
+                lda WALK_P
+                pha
+                lda WALK_OP1
+                sta RESULT_INC_MEM_M
+                plp
+                inc RESULT_INC_MEM_M
+                php
+                pla
+                sta RESULT_BIT_P
 
                 ; Test ORA (A = OP1; save resulting A and P registers)
 
@@ -842,7 +910,7 @@ update_record:  php
                 plp
                 sta RESULT_STA_MEM
                 php
-                ; lda/sta RESULT_STA_A would be silly
+                ; lda/sta RESULT_STA_MEM would be silly
                 pla
                 sta RESULT_STA_P
 
@@ -882,7 +950,7 @@ update_record:  php
                 pla
                 sta RESULT_SBC_P
 
-                ; Test BIT
+                ; Test BIT mem (A = OP1; mem = OP2; save resulting A and P registers)
 
                 lda WALK_P
                 pha
@@ -893,6 +961,120 @@ update_record:  php
                 sta RESULT_BIT_A
                 pla
                 sta RESULT_BIT_P
+
+                ; Test STX (X = OP1; save resulting memory and P registers)
+
+                lda WALK_P
+                pha
+                ldx WALK_OP1
+                plp
+                stx RESULT_STX_MEM
+                php
+                ; lda/sta RESULT_STX_MEM would be silly
+                pla
+                sta RESULT_STX_P
+
+                ; Test LDX
+
+                lda WALK_P
+                pha
+                ldx WALK_OP1
+                plp
+                ldx WALK_OP1
+                php
+                stx RESULT_LDX_X
+                pla
+                sta RESULT_LDX_P
+
+                ; Test CPX (X = OP1; save resulting X and P registers)
+
+                lda WALK_P
+                pha
+                ldx WALK_OP1
+                plp
+                cpx WALK_OP2
+                php
+                stx RESULT_CPX_X
+                pla
+                sta RESULT_CPX_P
+
+                ; Test STY (Y = OP1; save resulting memory and P registers)
+
+                lda WALK_P
+                pha
+                ldy WALK_OP1
+                plp
+                sty RESULT_STY_MEM
+                php
+                ; lda/sta RESULT_STY_MEM would be silly
+                pla
+                sta RESULT_STY_P
+
+                ; Test LDY
+
+                lda WALK_P
+                pha
+                ldy WALK_OP1
+                plp
+                ldy WALK_OP1
+                php
+                sty RESULT_LDY_Y
+                pla
+                sta RESULT_LDY_P
+
+                ; Test CPY (Y = OP1; save resulting Y and P registers)
+
+                lda WALK_P
+                pha
+                ldy WALK_OP1
+                plp
+                cpy WALK_OP2
+                php
+                sty RESULT_CPY_Y
+                pla
+                sta RESULT_CPY_P
+
+                .if 0
+
+                ; Test PHP
+
+                lda WALK_P
+                pha
+
+                plp
+                php ; Instruction under investigation.
+
+                php
+                pla
+                sta RESULT_PHP_P
+                pla
+                sta RESULT_PHP_STACK
+
+                ; Test PHA
+
+                lda WALK_P
+                php
+                lda WALK_OP1
+
+                plp
+                pha ; Instruction under investigation.
+
+                php
+                pla
+                sta RESULT_PHA_P
+                pla
+                sta RESULT_PHA_STACK
+
+                ; Test PLP
+
+                lda WALK_OP1
+                pha
+                lda WALK_P
+                pha
+
+                plp ; Instruction under investigation
+
+                .endif
 
                 ; Restore interrupts
 
